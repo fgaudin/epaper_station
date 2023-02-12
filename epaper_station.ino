@@ -7,6 +7,13 @@
 #include <ArduinoJson.h>
 #include <TimeLib.h>
 
+#include <GxEPD2_BW.h>
+#include <GxEPD2_3C.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
+
+GxEPD2_3C < GxEPD2_583c_Z83, GxEPD2_583c_Z83::HEIGHT / 4 > display(GxEPD2_583c_Z83(/*CS=D8*/ SS, /*DC=D3*/ 0, /*RST=D4*/ 2, /*BUSY=D2*/ 4)); // GDEW0583Z83 648x480, GD7965
+
 struct Settings {
   char ssid[32];
   char password[32];
@@ -18,6 +25,36 @@ Settings settings;
 const char* openWeatherApi = "https://api.openweathermap.org/data/2.5/%s?q=%s&units=metric&APPID=%s%s";
 const char* weatherEndpoint = "weather";
 const char* forecastEndpoint = "forecast";
+
+const char* sun = "Sun";
+const char* mon = "Mon";
+const char* tue = "Tue";
+const char* wed = "Wed";
+const char* thu = "Thu";
+const char* fri = "Fri";
+const char* sat = "Sat";
+
+const char *const weekdays[] = {sun, mon, tue, wed, thu, fri, sat};
+
+struct forecastDay {
+  char day[4];
+  int morningTemp;
+  char morningWeather[4] = "";
+  int afternoonTemp;
+  char afternoonWeather[4] = "";
+};
+
+struct State {
+  int currentTemp;
+  char currentWeather[4];
+  int afternoonTemp;
+  char afternoonWeather[4];
+  char todaySunrise[6];
+  char todaySunset[6];
+  forecastDay forecast[3];
+};
+
+State state;
 
 BearSSL::CertStore certStore;
 
@@ -66,13 +103,13 @@ void setClock() {
   time_t now = time(nullptr);
   while (now < 8 * 3600 * 2) {
     delay(500);
-    Serial.print(".");
+    Serial.print(F("."));
     now = time(nullptr);
   }
   Serial.println("");
   struct tm timeinfo;
   gmtime_r(&now, &timeinfo);
-  Serial.print("Current time: ");
+  Serial.print(F("Current time: "));
   Serial.print(asctime(&timeinfo));
 }
 
@@ -86,64 +123,27 @@ void connectToWifi() {
   }
   Serial.println("");
 
-  Serial.println(F("WiFi connected"));
-  Serial.print(F("IP address: "));
   Serial.println(WiFi.localIP());
 }
 
 void refreshWeather(BearSSL::WiFiClientSecure *bear) {
   char url[128];
   sprintf(url, openWeatherApi, weatherEndpoint, settings.OWLocation, settings.OWApiKey, "");
-  Serial.println(url);
 
   http.begin(dynamic_cast<WiFiClient&>(*bear), url);
   int httpCode = http.GET();
-  Serial.println(httpCode);
 
   DynamicJsonDocument doc(1024);
   deserializeJson(doc, http.getString());
 
-  float temp = doc["main"]["temp"];
-  const char *weatherIcon = doc["weather"][0]["icon"];
-  unsigned long sunrise = (int)(doc["sys"]["sunrise"]) + (int)(doc["timezone"]);
-  unsigned long sunset = (int)(doc["sys"]["sunset"]) + (int)(doc["timezone"]);
+  state.currentTemp = round((float)doc["main"]["temp"]);
+  strcpy(state.currentWeather, doc["weather"][0]["icon"]);
+  unsigned int sunrise = (int)(doc["sys"]["sunrise"]) + (int)(doc["timezone"]);
+  unsigned int sunset = (int)(doc["sys"]["sunset"]) + (int)(doc["timezone"]);
 
-  char sunrise_t[6];
-  sprintf(sunrise_t, "%02d:%02d", hour(sunrise), minute(sunrise));
-  char sunset_t[6];
-  sprintf(sunset_t, "%02d:%02d", hour(sunset), minute(sunset));
-
-  Serial.print("temp: ");
-  Serial.println(temp);
-  Serial.print("weatherIcon: ");
-  Serial.println(weatherIcon);
-  Serial.print("sunrise: ");
-  Serial.println(sunrise_t);
-  Serial.print("sunset: ");
-  Serial.println(sunset_t);
-
+  sprintf(state.todaySunrise, "%02d:%02d", hour(sunrise), minute(sunrise));
+  sprintf(state.todaySunset, "%02d:%02d", hour(sunset), minute(sunset));
 }
-
-struct forecastDay {
-  char day[4];
-  float morningTemp;
-  char morningWeather[4] = "";
-  float afternoonTemp;
-  char afternoonWeather[4] = "";
-};
-
-float todayAfternoonTemp;
-char todayAfternoonWeather[4] = "";
-
-char * weekdays[7] = {
-  "Sun",
-  "Mon",
-  "Tue",
-  "Wed",
-  "Thu",
-  "Fri",
-  "Sat"
-};
 
 void refreshForecast(BearSSL::WiFiClientSecure *bear) {
   char url[128];
@@ -151,7 +151,7 @@ void refreshForecast(BearSSL::WiFiClientSecure *bear) {
   Serial.println(url);
 
   http.begin(dynamic_cast<WiFiClient&>(*bear), url);
-  // http.useHTTP10(true);
+  http.useHTTP10(true);
   int httpCode = http.GET();
   Serial.println(httpCode);
 
@@ -160,8 +160,6 @@ void refreshForecast(BearSSL::WiFiClientSecure *bear) {
   if (error)
     Serial.println(error.f_str());
 
-  char buff[32];
-  forecastDay forecast[3];
   int dayIndex = 0;
 
   unsigned int now = millis() / 1000  + (int)(doc["city"]["timezone"]);
@@ -170,31 +168,43 @@ void refreshForecast(BearSSL::WiFiClientSecure *bear) {
     unsigned long t = (int)(list_item["dt"]) + (int)(doc["city"]["timezone"]);
     if ((hour(t) >= 7 && hour(t) <10) || (hour(t) >= 16 && hour(t) <19)) {
       if(day(t) == day(now)) {
-        todayAfternoonTemp = list_item["main"]["temp"];
-        strcpy(todayAfternoonWeather, list_item["weather"][0]["icon"]);
+        state.afternoonTemp = list_item["main"]["temp"];
+        strcpy(state.afternoonWeather, list_item["weather"][0]["icon"]);
       } else {
-        if (strcmp(forecast[dayIndex].morningWeather, "") == 0) {
-          strcpy(forecast[dayIndex].day, weekdays[weekday(t) - 1]);
-          forecast[dayIndex].morningTemp = list_item["main"]["temp"];
-          strcpy(forecast[dayIndex].morningWeather, list_item["weather"][0]["icon"]);
+        if (strcmp(state.forecast[dayIndex].morningWeather, "") == 0) {
+          strcpy(state.forecast[dayIndex].day, weekdays[weekday(t) - 1]);
+          state.forecast[dayIndex].morningTemp = list_item["main"]["temp"];
+          strcpy(state.forecast[dayIndex].morningWeather, list_item["weather"][0]["icon"]);
         } else {
-          forecast[dayIndex].afternoonTemp = list_item["main"]["temp"];
-          strcpy(forecast[dayIndex].afternoonWeather, list_item["weather"][0]["icon"]);
+          state.forecast[dayIndex].afternoonTemp = list_item["main"]["temp"];
+          strcpy(state.forecast[dayIndex].afternoonWeather, list_item["weather"][0]["icon"]);
           dayIndex++;
         }
       }
     }
   }
-  Serial.println(todayAfternoonTemp);
-  Serial.println(todayAfternoonWeather);
-  for (int i=0; i<3; i++) {
-    Serial.print("forecast for: ");
-    Serial.println(forecast[i].day);
-    Serial.print("m temp: "); Serial.println(forecast[i].morningTemp);
-    Serial.print("m icon: "); Serial.println(forecast[i].morningWeather);
-    Serial.print("a temp: "); Serial.println(forecast[i].afternoonTemp);
-    Serial.print("a icon: "); Serial.println(forecast[i].afternoonWeather);
+}
+
+void displayWeather()
+{
+  const char * HelloWorld = "Francois is here";
+  display.setRotation(0);
+  display.setFont(&FreeMonoBold24pt7b);
+  display.setTextColor(GxEPD_RED);
+  int16_t tbx, tby; uint16_t tbw, tbh;
+  display.getTextBounds(HelloWorld, 0, 0, &tbx, &tby, &tbw, &tbh);
+  // center the bounding box by transposition of the origin:
+  uint16_t x = ((display.width() - tbw) / 2) - tbx;
+  uint16_t y = ((display.height() - tbh) / 2) - tby;
+  display.setFullWindow();
+  display.firstPage();
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+    display.setCursor(x, y);
+    display.print(state.currentTemp);
   }
+  while (display.nextPage());
 }
 
 void setup() {
@@ -221,7 +231,14 @@ void setup() {
   bear->setCertStore(&certStore);
 
   refreshWeather(bear);
-  refreshForecast(bear);
+  // refreshForecast(bear);
+
+  delete bear;
+  bear = NULL;
+
+  display.init(115200, true, 2, false);
+  displayWeather();
+  display.hibernate();
 }
 
 void loop() {
