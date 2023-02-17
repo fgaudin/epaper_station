@@ -11,6 +11,8 @@
 #include <GxEPD2_3C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
+#include "fonts/FreeMonoBold48pt7b.h"
+#include "fonts/FreeMonoBold64pt7b.h"
 
 #include <FS.h>
 #define FileClass fs::File
@@ -105,16 +107,26 @@ void printState() {
 }
 
 void toWeekdayStr(char * dest, int weekday /* 1-indexed */) {
-  const char* sun = "Sun";
-  const char* mon = "Mon";
-  const char* tue = "Tue";
-  const char* wed = "Wed";
-  const char* thu = "Thu";
-  const char* fri = "Fri";
-  const char* sat = "Sat";
-
-  const char *const weekdays[] = {sun, mon, tue, wed, thu, fri, sat};
+  const char *const weekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
   strcpy(dest, weekdays[weekday-1]);
+}
+
+void toMonthStr(char * dest, int monthIdx /* 1-indexed */) {
+  const char *const months[] = {
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sept",
+    "Oct",
+    "Nov",
+    "Dec"
+  };
+  strcpy(dest, months[monthIdx-1]);
 }
 
 void refreshData(byte refresh) {
@@ -150,41 +162,188 @@ void refreshData(byte refresh) {
   disconnectWifi();
 }
 
-void displayWeather(Display display)
-{
-  display.setRotation(0);
-  display.setFont(&FreeMonoBold24pt7b);
-  display.setTextColor(GxEPD_BLACK);
-  int16_t tbx, tby; uint16_t tbw, tbh;
-  uint16_t x = 30;
-  uint16_t y = 50;
+void clearDisplay(Display display) {
   display.setFullWindow();
   display.firstPage();
 
-  unsigned long now_t = state.dt - state.offset;
-  Serial.print(F("now: "));
-  Serial.println(now_t);
-  char date[11];
-  sprintf(date, "%02d/%02d/%02d", month(now_t), day(now_t), year(now_t));
-  char weekdayStr[4] = "";
-  toWeekdayStr(weekdayStr, weekday(now_t));
   do
   {
     display.fillScreen(GxEPD_WHITE);
-    display.setCursor(x, y);
-    display.print(weekdayStr);
-    display.setCursor(x + 100, y);
-    display.print(date);
-    display.setCursor(x, y + 50);
-    display.print(state.currentTemp);
-    display.setCursor(x, y + 100);
-    display.print(state.currentWeather);
   }
   while (display.nextPage());
+}
 
-  int16_t w2 = display.width() / 2;
-  int16_t h2 = display.height() / 2;
-  drawBitmapFromSpiffs(display, "01d.bmp", w2, h2, false);
+void displayDate(Display display) {
+  uint16_t w = 300;
+  uint16_t h = 280;
+  
+
+  uint16_t x = 0;
+  uint16_t y = 0;
+  int16_t tbx, tby; uint16_t tbw, tbh;
+
+  display.setRotation(0);
+  display.setPartialWindow(0, 0, w, h);
+  display.firstPage();
+
+  unsigned long now_t = state.dt + state.offset;
+  
+  char weekdayStr[4] = "";
+  toWeekdayStr(weekdayStr, weekday(now_t));
+  char monthStr[4] = "";
+  toMonthStr(monthStr, month(now_t));
+  char dayStr[3];
+  sprintf(dayStr, "%02d", day(now_t));
+
+  int leftCol = 0;
+
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+
+    // day of week
+    display.setTextColor(GxEPD_RED);
+    display.setFont(&FreeMonoBold64pt7b);
+    display.getTextBounds(weekdayStr, 0, 0, &tbx, &tby, &tbw, &tbh);
+
+    leftCol = tbw + 10;
+    x = (leftCol - tbw) / 2;
+    y = tbh + 15;
+    display.setCursor(x, y);
+    display.print(weekdayStr);
+
+    // month
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeMonoBold24pt7b);
+    display.getTextBounds(monthStr, 0, 0, &tbx, &tby, &tbw, &tbh);
+    x = (leftCol - tbw) / 2;
+    y = y + tbh + 30;
+    display.setCursor(x, y);
+    display.print(monthStr);
+
+    // day
+    display.setTextColor(GxEPD_RED);
+    display.setFont(&FreeMonoBold64pt7b);
+    display.getTextBounds(dayStr, 0, 0, &tbx, &tby, &tbw, &tbh);
+    x = (leftCol - tbw) / 2;
+    y = y + tbh + 30;
+    display.setCursor(x, y);
+    display.print(dayStr);
+  }
+  while (display.nextPage());
+}
+
+void displayWeather(Display display)
+{
+  uint16_t x = 0;
+  uint16_t y = 320;
+  uint16_t w = 300;
+  uint16_t h = display.height() - y - 1;
+
+  int16_t tbx, tby; uint16_t tbw, tbh;
+  
+  char temp[4] = "";
+  sprintf(temp,"% 2d", state.currentTemp);
+  
+  const int bigIcons = 96;
+
+  display.setRotation(0);
+  display.setPartialWindow(x, y, w, h);
+  display.firstPage();
+  
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+
+    // temp
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeMonoBold48pt7b);
+    display.getTextBounds(temp, 0, 0, &tbx, &tby, &tbw, &tbh);
+    tbx = 5;
+    tby = y + tbh + 10;
+    display.setCursor(tbx, tby);
+    display.print(temp);
+
+    tbx = tbx + tbw + 40;
+    tby = tby - bigIcons + 10;
+    char icon[11] = "";
+    strcat(icon, state.currentWeather);
+    strcat(icon, "_96");
+    strcat(icon, ".bmp");
+    drawBitmapFromSpiffs(display, icon, tbx, tby, false);
+  }
+  while (display.nextPage());
+}
+
+
+void displayForecast(Display display) {
+  const uint16_t initial_x = 450;
+  const uint16_t initial_y = 0;
+  uint16_t x = initial_x;
+  uint16_t y = initial_y;
+  const uint16_t w = 648 - x - 1;
+  const uint16_t h = 460;
+
+  int16_t tbx, tby; uint16_t tbw, tbh;
+
+  char weekdayStr[4] = "";
+  char temp[4] = "";
+
+  const int iconSize = 48;
+  
+  display.setRotation(0);
+  display.setPartialWindow(x, y, w, h);
+  display.firstPage();
+  
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+
+    for (int i=0; i<3; i++) {
+      // day
+      display.setTextColor(GxEPD_RED);
+      display.setFont(&FreeMonoBold24pt7b);
+      display.getTextBounds(state.forecast[i].day, 0, 0, &tbx, &tby, &tbw, &tbh);
+      if (i == 0) {
+        y = initial_y;
+      }
+      y = y + (tbh + 30);
+      display.setCursor(x, y);
+      display.print(state.forecast[i].day);
+
+      // morning temp
+      display.setTextColor(GxEPD_BLACK);
+      display.setFont(&FreeMonoBold24pt7b);
+      sprintf(temp,"% 3d", state.forecast[i].morningTemp);
+      display.getTextBounds(temp, 0, 0, &tbx, &tby, &tbw, &tbh);
+      y = y + (tbh + 10);
+      display.setCursor(x, y);
+      display.print(temp);
+
+      // morning weather
+      char icon[11] = "";
+      strcpy(icon, state.forecast[i].morningWeather);
+      strcat(icon, "_48");
+      strcat(icon, ".bmp");
+      drawBitmapFromSpiffs(display, icon, x + 120, y - iconSize + 10, false);
+
+      // afternoon temp
+      display.setTextColor(GxEPD_BLACK);
+      display.setFont(&FreeMonoBold24pt7b);
+      sprintf(temp,"% 3d", state.forecast[i].afternoonTemp);
+      display.getTextBounds(temp, 0, 0, &tbx, &tby, &tbw, &tbh);
+      y = y + (tbh + 10);
+      display.setCursor(x, y);
+      display.print(temp);
+
+      // afternoon weather
+      strcpy(icon, state.forecast[i].afternoonWeather);
+      strcat(icon, "_48");
+      strcat(icon, ".bmp");
+      drawBitmapFromSpiffs(display, icon, x + 120, y - iconSize + 10, false);
+    }
+  }
+  while (display.nextPage());
 }
 
 void refreshDisplay(byte refresh) {
@@ -194,7 +353,10 @@ void refreshDisplay(byte refresh) {
 
   Display display(GxEPD2_583c_Z83(/*CS=D8*/ SS, /*DC=D3*/ 0, /*RST=D4*/ 2, /*BUSY=D2*/ 4)); // GDEW0583Z83 648x480, GD7965
   display.init(115200, true, 2, false);
+  clearDisplay(display);
+  displayDate(display);
   displayWeather(display);
+  displayForecast(display);
   display.hibernate();
 }
 
@@ -553,7 +715,7 @@ void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int1
           display.writeImage(output_row_mono_buffer, output_row_color_buffer, x, yrow, w, 1);
         } // end line
         Serial.print("loaded in "); Serial.print(millis() - startTime); Serial.println(" ms");
-        display.refresh();
+        // display.refresh();
       }
     }
   }
