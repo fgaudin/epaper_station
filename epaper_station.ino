@@ -70,7 +70,7 @@ void setup() {
   refreshData(refresh);
   printState();
 
-  delay(2000);
+  delay(1000);
   Serial.println("memory before display: ");
   Serial.println(ESP.getFreeHeap(), DEC);
   refreshDisplay(refresh);
@@ -238,6 +238,7 @@ void displayDate(Display display) {
     display.print(dayStr);
   }
   while (display.nextPage());
+  delay(1000);
 }
 
 void displayWeather(Display display)
@@ -323,8 +324,57 @@ void displayWeather(Display display)
     display.print("o");
   }
   while (display.nextPage());
+  delay(1000);
 }
 
+void displaySunset(Display display) {
+  const uint16_t initial_x = 10;
+  const uint16_t initial_y = 330;
+  uint16_t x = initial_x;
+  uint16_t y = initial_y;
+  const uint16_t w = 200;
+  const uint16_t h = 100;
+
+  int16_t tbx, tby; uint16_t tbw, tbh;
+
+  display.setRotation(0);
+  display.setPartialWindow(x, y, w, h);
+  display.firstPage();
+
+  char * sunriseIcon = "sun-rise_36.bmp";
+  char * sunsetIcon = "sun-set_36.bmp";
+  const int iconSize = 36;
+
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+    // sunrise
+    x = initial_x + 20;
+    y = initial_y;
+    drawBitmapFromSpiffs(display, sunriseIcon, x, y, false);
+
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeMonoBold12pt7b);
+    display.getTextBounds(state.todaySunrise, 0, 0, &tbx, &tby, &tbw, &tbh);
+    x = x + iconSize + 10;
+    y = y + tbh + 10;
+    display.setCursor(x, y);
+    display.print(state.todaySunrise);
+
+    // sunset
+    x = initial_x + 20;
+    y = y + 10;
+    drawBitmapFromSpiffs(display, sunsetIcon, x, y, false);
+
+    display.getTextBounds(state.todaySunset, 0, 0, &tbx, &tby, &tbw, &tbh);
+    x = x + iconSize + 10;
+    y = y + tbh + 10;
+    display.setCursor(x, y);
+    display.print(state.todaySunset);
+  }
+  while (display.nextPage());
+  delay(1000);
+}
 
 void displayForecast(Display display) {
   const uint16_t initial_x = 470;
@@ -395,6 +445,15 @@ void displayForecast(Display display) {
     }
   }
   while (display.nextPage());
+  delay(1000);
+}
+
+void displayNextBus(Display display) {
+  
+}
+
+void displayLastUpdate(Display display) {
+  
 }
 
 void refreshDisplay(byte refresh) {
@@ -405,9 +464,12 @@ void refreshDisplay(byte refresh) {
   Display display(GxEPD2_583c_Z83(/*CS=D8*/ SS, /*DC=D3*/ 0, /*RST=D4*/ 2, /*BUSY=D2*/ 4)); // GDEW0583Z83 648x480, GD7965
   display.init(115200, true, 2, false);
   clearDisplay(display);
+  displaySunset(display);
   displayDate(display);
   displayWeather(display);
   displayForecast(display);
+  displayNextBus(display);
+  displayLastUpdate(display);
   display.hibernate();
 }
 
@@ -533,8 +595,6 @@ void refreshForecast(Settings *settings, BearSSL::WiFiClientSecure *bear) {
 
   int offset = doc["city"]["timezone"];
   unsigned int currentTime = state.dt + state.offset;
-  Serial.print(F("current time: "));
-  Serial.println(currentTime);
 
   state.laterTime = (int)doc["list"][1]["dt"] + offset;
   state.laterTemp = doc["list"][1]["main"]["temp"];
@@ -542,15 +602,7 @@ void refreshForecast(Settings *settings, BearSSL::WiFiClientSecure *bear) {
 
   for (JsonObject list_item : doc["list"].as<JsonArray>()) {
     unsigned long t = ((int)list_item["dt"]) + offset;
-    Serial.print(F("t: "));
-    Serial.println(t);
-    Serial.print(F("dayIndex: "));
-    Serial.println(dayIndex);
     if ((hour(t) >= 7 && hour(t) < 10) || (hour(t) >= 16 && hour(t) < 19)) {
-      Serial.print(F("day(t): "));
-      Serial.println(day(t));
-      Serial.print(F("current day: "));
-      Serial.println(day(currentTime));
       if (day(t) != day(currentTime)) {
         if (strcmp(state.forecast[dayIndex].morningWeather, "") == 0) {
           toWeekdayStr(state.forecast[dayIndex].day, weekday(t));
@@ -567,7 +619,6 @@ void refreshForecast(Settings *settings, BearSSL::WiFiClientSecure *bear) {
       }
     }
   }
-  Serial.println(F("done"));
 }
 
 static const uint16_t input_buffer_pixels = 800; // may affect performance
