@@ -10,6 +10,8 @@
 #include <GxEPD2_BW.h>
 #include <GxEPD2_3C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
+#include <Fonts/FreeMonoBold12pt7b.h>
+#include <Fonts/FreeMonoBold18pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 #include "fonts/FreeMonoBold48pt7b.h"
 #include "fonts/FreeMonoBold64pt7b.h"
@@ -41,8 +43,9 @@ struct State {
   int offset;
   int currentTemp;
   char currentWeather[4];
-  int afternoonTemp;
-  char afternoonWeather[4];
+  int laterTime;
+  int laterTemp;
+  char laterWeather[4];
   char todaySunrise[6];
   char todaySunset[6];
   forecastDay forecast[3];
@@ -67,6 +70,8 @@ void setup() {
   refreshData(refresh);
   printState();
 
+  delay(2000);
+  Serial.println("memory before display: ");
   Serial.println(ESP.getFreeHeap(), DEC);
   refreshDisplay(refresh);
 
@@ -84,10 +89,12 @@ void printState() {
   Serial.println(state.currentTemp);
   Serial.print(F("weather: "));
   Serial.println(state.currentWeather);
-  Serial.print(F("afternoon temp: "));
-  Serial.println(state.afternoonTemp);
-  Serial.print(F("afternoon weather: "));
-  Serial.println(state.afternoonWeather);
+  Serial.print(F("later time: "));
+  Serial.println(state.laterTime);
+  Serial.print(F("later temp: "));
+  Serial.println(state.laterTemp);
+  Serial.print(F("later weather: "));
+  Serial.println(state.laterWeather);
   Serial.print(F("sunset: "));
   Serial.println(state.todaySunset);
   Serial.print(F("sunrise: "));
@@ -174,7 +181,7 @@ void clearDisplay(Display display) {
 }
 
 void displayDate(Display display) {
-  uint16_t w = 300;
+  uint16_t w = 240;
   uint16_t h = 280;
   
 
@@ -193,7 +200,7 @@ void displayDate(Display display) {
   char monthStr[4] = "";
   toMonthStr(monthStr, month(now_t));
   char dayStr[3];
-  sprintf(dayStr, "%02d", day(now_t));
+  snprintf(dayStr, 3, "%02d", day(now_t));
 
   int leftCol = 0;
 
@@ -235,17 +242,32 @@ void displayDate(Display display) {
 
 void displayWeather(Display display)
 {
-  uint16_t x = 0;
-  uint16_t y = 320;
-  uint16_t w = 300;
-  uint16_t h = display.height() - y - 1;
+  const uint16_t initial_x = 240;
+  const uint16_t initial_y = 30;
+  uint16_t x = initial_x;
+  uint16_t y = initial_y;
+  uint16_t w = 210;
+  uint16_t h = 410;
 
   int16_t tbx, tby; uint16_t tbw, tbh;
   
   char temp[4] = "";
-  sprintf(temp,"% 2d", state.currentTemp);
-  
-  const int bigIcons = 96;
+  snprintf(temp, 4, "%2d", state.currentTemp);
+
+  char laterTemp[4] = "";
+  snprintf(laterTemp, 4, "%2d", state.laterTemp);
+
+  const int iconSize = 128;
+  const int laterIconSize = 64;
+
+  char icon[12] = "";
+  snprintf(icon, 12, "%s_%d.bmp", state.currentWeather, iconSize);
+
+  char laterIcon[12] = "";
+  snprintf(laterIcon, 12, "%s_%d.bmp", state.laterWeather, laterIconSize);
+
+  char laterTimeStr[6];
+  snprintf(laterTimeStr, 6, "%02d:%02d", hour(state.laterTime), minute(state.laterTime));
 
   display.setRotation(0);
   display.setPartialWindow(x, y, w, h);
@@ -255,92 +277,121 @@ void displayWeather(Display display)
   {
     display.fillScreen(GxEPD_WHITE);
 
+    // weather
+    x = initial_x + (w - iconSize) / 2;
+    y = initial_y;
+    drawBitmapFromSpiffs(display, icon, x, y, false);
+
     // temp
     display.setTextColor(GxEPD_BLACK);
     display.setFont(&FreeMonoBold48pt7b);
     display.getTextBounds(temp, 0, 0, &tbx, &tby, &tbw, &tbh);
-    tbx = 5;
-    tby = y + tbh + 10;
-    display.setCursor(tbx, tby);
+    x = initial_x + (w - tbw) / 2 - 10;
+    y = y + iconSize + tbh + 20;
+    display.setCursor(x, y);
     display.print(temp);
+    // degree symbol (the letter "o")
+    display.setFont(&FreeMonoBold12pt7b);
+    display.setCursor(x + tbw + 15, y-tbh+9);
+    display.print("o");
 
-    tbx = tbx + tbw + 40;
-    tby = tby - bigIcons + 10;
-    char icon[11] = "";
-    strcat(icon, state.currentWeather);
-    strcat(icon, "_96");
-    strcat(icon, ".bmp");
-    drawBitmapFromSpiffs(display, icon, tbx, tby, false);
+    // later time
+    display.setTextColor(GxEPD_RED);
+    display.setFont(&FreeMonoBold18pt7b);
+    display.getTextBounds(laterTimeStr, 0, 0, &tbx, &tby, &tbw, &tbh);
+    x = initial_x;
+    y = y + tbh + 60;
+    display.setCursor(x, y);
+    display.print(laterTimeStr);
+    
+    // later weather
+    x = initial_x + 10;
+    y = y + 15;
+    drawBitmapFromSpiffs(display, laterIcon, x, y, false);
+
+    // later temp
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeMonoBold24pt7b);
+    display.getTextBounds(laterTemp, 0, 0, &tbx, &tby, &tbw, &tbh);
+    x = initial_x + 20 + laterIconSize;
+    y = y + tbh + 15;
+    display.setCursor(x, y);
+    display.print(laterTemp);
+    // degree symbol (the letter "o")
+    display.setFont(&FreeMonoBold9pt7b);
+    display.setCursor(x + tbw + 10, y-tbh+9);
+    display.print("o");
   }
   while (display.nextPage());
 }
 
 
 void displayForecast(Display display) {
-  const uint16_t initial_x = 450;
-  const uint16_t initial_y = 0;
+  const uint16_t initial_x = 470;
+  const uint16_t initial_y = 10;
   uint16_t x = initial_x;
   uint16_t y = initial_y;
   const uint16_t w = 648 - x - 1;
-  const uint16_t h = 460;
+  const uint16_t h = 640;
 
   int16_t tbx, tby; uint16_t tbw, tbh;
 
-  char weekdayStr[4] = "";
-  char temp[4] = "";
+  char temp[5] = "";
+  char icon[11] = "";
 
-  const int iconSize = 48;
+  const int iconSize = 36;
   
   display.setRotation(0);
   display.setPartialWindow(x, y, w, h);
   display.firstPage();
-  
   do
   {
     display.fillScreen(GxEPD_WHITE);
-
     for (int i=0; i<3; i++) {
+      if (i == 0) {
+        y = initial_y;
+      }
       // day
       display.setTextColor(GxEPD_RED);
       display.setFont(&FreeMonoBold24pt7b);
       display.getTextBounds(state.forecast[i].day, 0, 0, &tbx, &tby, &tbw, &tbh);
-      if (i == 0) {
-        y = initial_y;
-      }
-      y = y + (tbh + 30);
+      y = y + (tbh + 20);
       display.setCursor(x, y);
       display.print(state.forecast[i].day);
 
       // morning temp
       display.setTextColor(GxEPD_BLACK);
-      display.setFont(&FreeMonoBold24pt7b);
-      sprintf(temp,"% 3d", state.forecast[i].morningTemp);
+      display.setFont(&FreeMonoBold18pt7b);
+      snprintf(temp, 5, "% 3d", state.forecast[i].morningTemp);
       display.getTextBounds(temp, 0, 0, &tbx, &tby, &tbw, &tbh);
-      y = y + (tbh + 10);
-      display.setCursor(x, y);
+      y = y + (tbh + 12);
+      display.setCursor(x+10, y);
       display.print(temp);
+      // degree symbol (the letter "o")
+      display.setFont(&FreeMonoBold9pt7b);
+      display.setCursor(x+13+tbw, y-tbh+6);
+      display.print("o");
 
       // morning weather
-      char icon[11] = "";
-      strcpy(icon, state.forecast[i].morningWeather);
-      strcat(icon, "_48");
-      strcat(icon, ".bmp");
-      drawBitmapFromSpiffs(display, icon, x + 120, y - iconSize + 10, false);
+      snprintf(icon, 11, "%s_%d.bmp", state.forecast[i].morningWeather, iconSize);
+      drawBitmapFromSpiffs(display, icon, x + 110, y - iconSize + 10, false);
 
       // afternoon temp
       display.setTextColor(GxEPD_BLACK);
-      display.setFont(&FreeMonoBold24pt7b);
-      sprintf(temp,"% 3d", state.forecast[i].afternoonTemp);
+      display.setFont(&FreeMonoBold18pt7b);
+      snprintf(temp, 5, "% 3d", state.forecast[i].afternoonTemp);
       display.getTextBounds(temp, 0, 0, &tbx, &tby, &tbw, &tbh);
-      y = y + (tbh + 10);
-      display.setCursor(x, y);
+      y = y + (tbh + 20);
+      display.setCursor(x+10, y);
       display.print(temp);
+      // degree symbol (the letter "o")
+      display.setFont(&FreeMonoBold9pt7b);
+      display.setCursor(x+13+tbw, y-tbh+6);
+      display.print("o");
 
       // afternoon weather
-      strcpy(icon, state.forecast[i].afternoonWeather);
-      strcat(icon, "_48");
-      strcat(icon, ".bmp");
-      drawBitmapFromSpiffs(display, icon, x + 120, y - iconSize + 10, false);
+      snprintf(icon, 11, "%s_%d.bmp", state.forecast[i].afternoonWeather, iconSize);
+      drawBitmapFromSpiffs(display, icon, x + 110, y - iconSize + 10, false);
     }
   }
   while (display.nextPage());
@@ -432,7 +483,7 @@ void disconnectWifi() {
 
 void refreshWeather(Settings *settings, BearSSL::WiFiClientSecure *bear) {
   char url[128];
-  sprintf(url, openWeatherApi, weatherEndpoint, settings->OWLocation, settings->OWApiKey, "");
+  snprintf(url, 128, openWeatherApi, weatherEndpoint, settings->OWLocation, settings->OWApiKey, "");
   Serial.println(url);
 
   HTTPClient http;
@@ -450,13 +501,13 @@ void refreshWeather(Settings *settings, BearSSL::WiFiClientSecure *bear) {
   unsigned int sunrise = (int)(doc["sys"]["sunrise"]) + (int)(doc["timezone"]);
   unsigned int sunset = (int)(doc["sys"]["sunset"]) + (int)(doc["timezone"]);
 
-  sprintf(state.todaySunrise, "%02d:%02d", hour(sunrise), minute(sunrise));
-  sprintf(state.todaySunset, "%02d:%02d", hour(sunset), minute(sunset));
+  snprintf(state.todaySunrise, 6, "%02d:%02d", hour(sunrise), minute(sunrise));
+  snprintf(state.todaySunset, 6, "%02d:%02d", hour(sunset), minute(sunset));
 }
 
 void refreshForecast(Settings *settings, BearSSL::WiFiClientSecure *bear) {
-  char url[128];
-  sprintf(url, openWeatherApi, forecastEndpoint, settings->OWLocation, settings->OWApiKey, "&cnt=30");
+  char url[132];
+  snprintf(url, 132, openWeatherApi, forecastEndpoint, settings->OWLocation, settings->OWApiKey, "&cnt=30");
   Serial.println(url);
 
   HTTPClient http;
@@ -480,17 +531,27 @@ void refreshForecast(Settings *settings, BearSSL::WiFiClientSecure *bear) {
 
   int dayIndex = 0;
 
-  unsigned int now = millis() / 1000  + (int)(doc["city"]["timezone"]);
-
   int offset = doc["city"]["timezone"];
+  unsigned int currentTime = state.dt + state.offset;
+  Serial.print(F("current time: "));
+  Serial.println(currentTime);
+
+  state.laterTime = (int)doc["list"][1]["dt"] + offset;
+  state.laterTemp = doc["list"][1]["main"]["temp"];
+  strcpy(state.laterWeather, doc["list"][1]["weather"][0]["icon"]);
 
   for (JsonObject list_item : doc["list"].as<JsonArray>()) {
     unsigned long t = ((int)list_item["dt"]) + offset;
+    Serial.print(F("t: "));
+    Serial.println(t);
+    Serial.print(F("dayIndex: "));
+    Serial.println(dayIndex);
     if ((hour(t) >= 7 && hour(t) < 10) || (hour(t) >= 16 && hour(t) < 19)) {
-      if (day(t) == day(now)) {
-        state.afternoonTemp = list_item["main"]["temp"];
-        strcpy(state.afternoonWeather, list_item["weather"][0]["icon"]);
-      } else {
+      Serial.print(F("day(t): "));
+      Serial.println(day(t));
+      Serial.print(F("current day: "));
+      Serial.println(day(currentTime));
+      if (day(t) != day(currentTime)) {
         if (strcmp(state.forecast[dayIndex].morningWeather, "") == 0) {
           toWeekdayStr(state.forecast[dayIndex].day, weekday(t));
           state.forecast[dayIndex].morningTemp = list_item["main"]["temp"];
@@ -549,7 +610,7 @@ void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int1
   uint32_t startTime = millis();
   if ((x >= display.epd2.WIDTH) || (y >= display.epd2.HEIGHT)) return;
   Serial.println();
-  Serial.print("Loading image '");
+  Serial.print(F("Loading image '"));
   Serial.print(filename);
   Serial.println('\'');
 #if defined(ESP32)
@@ -559,7 +620,7 @@ void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int1
 #endif
   if (!file)
   {
-    Serial.print("File not found");
+    Serial.print(F("File not found"));
     return;
   }
   // Parse BMP header
@@ -576,11 +637,11 @@ void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int1
     uint32_t format = read32(file);
     if ((planes == 1) && ((format == 0) || (format == 3))) // uncompressed is handled, 565 also
     {
-      Serial.print("File size: "); Serial.println(fileSize);
-      Serial.print("Image Offset: "); Serial.println(imageOffset);
-      Serial.print("Header size: "); Serial.println(headerSize);
-      Serial.print("Bit Depth: "); Serial.println(depth);
-      Serial.print("Image size: ");
+      Serial.print(F("File size: ")); Serial.println(fileSize);
+      Serial.print(F("Image Offset: ")); Serial.println(imageOffset);
+      Serial.print(F("Header size: ")); Serial.println(headerSize);
+      Serial.print(F("Bit Depth: ")); Serial.println(depth);
+      Serial.print(F("Image size: "));
       Serial.print(width);
       Serial.print('x');
       Serial.println(height);
@@ -714,7 +775,7 @@ void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int1
           uint16_t yrow = y + (flip ? h - row - 1 : row);
           display.writeImage(output_row_mono_buffer, output_row_color_buffer, x, yrow, w, 1);
         } // end line
-        Serial.print("loaded in "); Serial.print(millis() - startTime); Serial.println(" ms");
+        Serial.print(F("loaded in ")); Serial.print(millis() - startTime); Serial.println(F(" ms"));
         // display.refresh();
       }
     }
@@ -722,7 +783,7 @@ void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int1
   file.close();
   if (!valid)
   {
-    Serial.println("bitmap format not handled.");
+    Serial.println(F("bitmap format not handled."));
   }
 }
 
