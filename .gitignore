@@ -1,3 +1,4 @@
 data/certs.ar
 data/settings.json
-
+.pio/
+.vscode/

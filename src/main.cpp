@@ -1,55 +1,12 @@
-#include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
-#include <CertStoreBearSSL.h>
-#include <time.h>
-#include <FS.h>
-#include <LittleFS.h>
-#include <ArduinoJson.h>
-#include <TimeLib.h>
+#include "main.h"
 
-#include <GxEPD2_BW.h>
-#include <GxEPD2_3C.h>
-#include <Fonts/FreeMonoBold9pt7b.h>
-#include <Fonts/FreeMonoBold12pt7b.h>
-#include <Fonts/FreeMonoBold18pt7b.h>
-#include <Fonts/FreeMonoBold24pt7b.h>
-#include "fonts/FreeMonoBold48pt7b.h"
-#include "fonts/FreeMonoBold64pt7b.h"
-
-#include <FS.h>
 #define FileClass fs::File
 
-typedef struct {
-  char ssid[32];
-  char password[32];
-  char OWLocation[32];
-  char OWApiKey[33];
-} Settings;
+extern const uint8_t rootca_crt_bundle_start[] asm("_binary_data_cert_x509_crt_bundle_bin_start");
 
 const char* openWeatherApi = "https://api.openweathermap.org/data/2.5/%s?q=%s&units=metric&APPID=%s%s";
 const char* weatherEndpoint = "weather";
 const char* forecastEndpoint = "forecast";
-
-struct forecastDay {
-  char day[4];
-  int morningTemp;
-  char morningWeather[4] = "";
-  int afternoonTemp;
-  char afternoonWeather[4] = "";
-};
-
-struct State {
-  unsigned long dt;
-  int offset;
-  int currentTemp;
-  char currentWeather[4];
-  int laterTime;
-  int laterTemp;
-  char laterWeather[4];
-  char todaySunrise[6];
-  char todaySunset[6];
-  forecastDay forecast[3];
-};
 
 State state;
 
@@ -147,24 +104,15 @@ void refreshData(byte refresh) {
   connectToWifi(&settings);
   setClock();
 
-  BearSSL::CertStore certStore;
+  WiFiClientSecure *client = new WiFiClientSecure();
+  client->setCACertBundle(rootca_crt_bundle_start);
 
-  int numCerts = certStore.initCertStore(LittleFS, PSTR("/certs.idx"), PSTR("/certs.ar"));
-  Serial.printf("Number of CA certs read: %d\n", numCerts);
-  if (numCerts == 0) {
-    Serial.println(F("No certs found. Did you run certs-from-mozilla.py and upload the LittleFS directory before running?\n"));
-    return;
-  }
-
-  BearSSL::WiFiClientSecure *bear = new BearSSL::WiFiClientSecure();
-  bear->setCertStore(&certStore);
-
-  if (refresh & 1) refreshWeather(&settings, bear);
+  if (refresh & 1) refreshWeather(&settings, client);
   Serial.println(ESP.getFreeHeap(), DEC);
-  if (refresh >> 1 & 1) refreshForecast(&settings, bear);
+  if (refresh >> 1 & 1) refreshForecast(&settings, client);
 
-  delete bear;
-  bear = NULL;
+  delete client;
+  client = NULL;
 
   disconnectWifi();
 }
@@ -543,13 +491,13 @@ void disconnectWifi() {
   WiFi.mode(WIFI_OFF);
 }
 
-void refreshWeather(Settings *settings, BearSSL::WiFiClientSecure *bear) {
+void refreshWeather(Settings *settings, WiFiClientSecure *client) {
   char url[128];
   snprintf(url, 128, openWeatherApi, weatherEndpoint, settings->OWLocation, settings->OWApiKey, "");
   Serial.println(url);
 
   HTTPClient http;
-  http.begin(dynamic_cast<WiFiClient&>(*bear), url);
+  http.begin(dynamic_cast<WiFiClient&>(*client), url);
   http.useHTTP10(true);
   int httpCode = http.GET();
 
@@ -567,13 +515,13 @@ void refreshWeather(Settings *settings, BearSSL::WiFiClientSecure *bear) {
   snprintf(state.todaySunset, 6, "%02d:%02d", hour(sunset), minute(sunset));
 }
 
-void refreshForecast(Settings *settings, BearSSL::WiFiClientSecure *bear) {
+void refreshForecast(Settings *settings, WiFiClientSecure *client) {
   char url[132];
   snprintf(url, 132, openWeatherApi, forecastEndpoint, settings->OWLocation, settings->OWApiKey, "&cnt=30");
   Serial.println(url);
 
   HTTPClient http;
-  http.begin(dynamic_cast<WiFiClient&>(*bear), url);
+  http.begin(dynamic_cast<WiFiClient&>(*client), url);
   http.useHTTP10(true);
   int httpCode = http.GET();
   Serial.println(httpCode);
