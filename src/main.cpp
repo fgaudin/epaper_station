@@ -10,9 +10,7 @@ const char* forecastEndpoint = "forecast";
 
 State state;
 
-typedef GxEPD2_3C < GxEPD2_583c_Z83, GxEPD2_583c_Z83::HEIGHT / 4 > Display;
-
-void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int16_t y, bool with_color = true);
+Display display(GxEPD2_583c_Z83(16, 4, 22, 17)); // GDEW0583Z83 648x480, GD7965
 
 void setup() {
   Serial.begin(115200);
@@ -28,7 +26,7 @@ void setup() {
   printState();
 
   delay(1000);
-  Serial.println("memory before display: ");
+  Serial.println(F("memory before display: "));
   Serial.println(ESP.getFreeHeap(), DEC);
   refreshDisplay(refresh);
 
@@ -117,7 +115,8 @@ void refreshData(byte refresh) {
   disconnectWifi();
 }
 
-void clearDisplay(Display display) {
+void clearDisplay() {
+  Serial.println(F("clear display"));
   display.setFullWindow();
   display.firstPage();
 
@@ -128,7 +127,7 @@ void clearDisplay(Display display) {
   while (display.nextPage());
 }
 
-void displayDate(Display display) {
+void displayDate() {
   uint16_t w = 240;
   uint16_t h = 280;
   
@@ -189,7 +188,7 @@ void displayDate(Display display) {
   delay(1000);
 }
 
-void displayWeather(Display display)
+void displayWeather()
 {
   const uint16_t initial_x = 240;
   const uint16_t initial_y = 30;
@@ -229,7 +228,7 @@ void displayWeather(Display display)
     // weather
     x = initial_x + (w - iconSize) / 2;
     y = initial_y;
-    drawBitmapFromSpiffs(display, icon, x, y, false);
+    drawBitmapFromSpiffs(icon, x, y, false);
 
     // temp
     display.setTextColor(GxEPD_BLACK);
@@ -256,7 +255,7 @@ void displayWeather(Display display)
     // later weather
     x = initial_x + 10;
     y = y + 15;
-    drawBitmapFromSpiffs(display, laterIcon, x, y, false);
+    drawBitmapFromSpiffs(laterIcon, x, y, false);
 
     // later temp
     display.setTextColor(GxEPD_BLACK);
@@ -275,7 +274,7 @@ void displayWeather(Display display)
   delay(1000);
 }
 
-void displaySunset(Display display) {
+void displaySunset() {
   const uint16_t initial_x = 10;
   const uint16_t initial_y = 330;
   uint16_t x = initial_x;
@@ -299,7 +298,7 @@ void displaySunset(Display display) {
     // sunrise
     x = initial_x + 20;
     y = initial_y;
-    drawBitmapFromSpiffs(display, sunriseIcon, x, y, false);
+    drawBitmapFromSpiffs(sunriseIcon, x, y, false);
 
     display.setTextColor(GxEPD_BLACK);
     display.setFont(&FreeMonoBold12pt7b);
@@ -312,7 +311,7 @@ void displaySunset(Display display) {
     // sunset
     x = initial_x + 20;
     y = y + 10;
-    drawBitmapFromSpiffs(display, sunsetIcon, x, y, false);
+    drawBitmapFromSpiffs(sunsetIcon, x, y, false);
 
     display.getTextBounds(state.todaySunset, 0, 0, &tbx, &tby, &tbw, &tbh);
     x = x + iconSize + 10;
@@ -324,7 +323,7 @@ void displaySunset(Display display) {
   delay(1000);
 }
 
-void displayForecast(Display display) {
+void displayForecast() {
   const uint16_t initial_x = 470;
   const uint16_t initial_y = 10;
   uint16_t x = initial_x;
@@ -372,7 +371,7 @@ void displayForecast(Display display) {
 
       // morning weather
       snprintf(icon, 11, "%s_%d.bmp", state.forecast[i].morningWeather, iconSize);
-      drawBitmapFromSpiffs(display, icon, x + 110, y - iconSize + 10, false);
+      drawBitmapFromSpiffs(icon, x + 110, y - iconSize + 10, false);
 
       // afternoon temp
       display.setTextColor(GxEPD_BLACK);
@@ -389,18 +388,18 @@ void displayForecast(Display display) {
 
       // afternoon weather
       snprintf(icon, 11, "%s_%d.bmp", state.forecast[i].afternoonWeather, iconSize);
-      drawBitmapFromSpiffs(display, icon, x + 110, y - iconSize + 10, false);
+      drawBitmapFromSpiffs(icon, x + 110, y - iconSize + 10, false);
     }
   }
   while (display.nextPage());
   delay(1000);
 }
 
-void displayNextBus(Display display) {
+void displayNextBus() {
   
 }
 
-void displayLastUpdate(Display display) {
+void displayLastUpdate() {
   
 }
 
@@ -409,15 +408,17 @@ void refreshDisplay(byte refresh) {
     return;
   }
 
-  Display display(GxEPD2_583c_Z83(/*CS=D8*/ SS, /*DC=D3*/ 0, /*RST=D4*/ 2, /*BUSY=D2*/ 4)); // GDEW0583Z83 648x480, GD7965
+  Serial.println("Create display");
+  delay(500);
+  Serial.println("Init display");
   display.init(115200, true, 2, false);
-  clearDisplay(display);
-  displaySunset(display);
-  displayDate(display);
-  displayWeather(display);
-  displayForecast(display);
-  displayNextBus(display);
-  displayLastUpdate(display);
+  clearDisplay();
+  displaySunset();
+  displayDate();
+  displayWeather();
+  displayForecast();
+  displayNextBus();
+  displayLastUpdate();
   display.hibernate();
 }
 
@@ -481,9 +482,6 @@ void connectToWifi(Settings *settings) {
     delay(500);
     Serial.print(F("."));
   }
-  // Serial.println("");
-
-  // Serial.println(WiFi.localIP());
 }
 
 void disconnectWifi() {
@@ -601,7 +599,7 @@ uint32_t read32(fs::File& f)
   return result;
 }
 
-void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int16_t y, bool with_color)
+void drawBitmapFromSpiffs(const char *filename, int16_t x, int16_t y, bool with_color)
 {
   fs::File file;
   bool valid = false; // valid format to be handled
@@ -612,11 +610,7 @@ void drawBitmapFromSpiffs(Display display, const char *filename, int16_t x, int1
   Serial.print(F("Loading image '"));
   Serial.print(filename);
   Serial.println('\'');
-#if defined(ESP32)
-  file = SPIFFS.open(String("/") + filename, "r");
-#else
-  file = LittleFS.open(filename, "r");
-#endif
+  file = LittleFS.open(String("/") + filename, "r");
   if (!file)
   {
     Serial.print(F("File not found"));
