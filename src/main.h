@@ -47,7 +47,7 @@ struct State {
   forecastDay forecast[3];
 };
 
-typedef GxEPD2_3C < GxEPD2_583c_Z83, GxEPD2_583c_Z83::HEIGHT/4> Display;
+typedef GxEPD2_3C < GxEPD2_583c_Z83, GxEPD2_583c_Z83::HEIGHT/2> Display;
 
 void drawBitmapFromSpiffs(const char *filename, int16_t x, int16_t y, bool with_color = true);
 void refreshData(byte refresh);
