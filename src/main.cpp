@@ -2,6 +2,12 @@
 
 #define FileClass fs::File
 
+#define uS_TO_S_FACTOR 1000000ULL   // Conversion factor from microseconds to seconds
+#define TIME_TO_SLEEP  3600         // wake-up once per hour
+
+#define TOUCH_THRESHOLD 40 /* Greater the value, more the sensitivity */
+touch_pad_t touchPin;
+
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_data_cert_x509_crt_bundle_bin_start");
 
 const char* openWeatherApi = "https://api.openweathermap.org/data/2.5/%s?q=%s&units=metric&APPID=%s%s";
@@ -12,7 +18,43 @@ State state;
 
 Display display(GxEPD2_583c_Z83(16, 4, 22, 17)); // GDEW0583Z83 648x480, GD7965
 
+int ledPin = D9;
+
+float batteryVoltage;
+
+void updateInProgress() {
+  digitalWrite(ledPin, HIGH);
+}
+
+void updateDone() {
+  digitalWrite(ledPin, LOW);
+}
+
+void touchCallback(){
+  //placeholder callback function
+}
+
+void sleepDeep() {
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+
+  touchAttachInterrupt(T3, touchCallback, TOUCH_THRESHOLD);
+  esp_sleep_enable_touchpad_wakeup();
+  esp_deep_sleep_start();
+}
+
 void setup() {
+  pinMode(ledPin, OUTPUT);
+  updateInProgress();
+
+  batteryVoltage = readBattery();
+  Serial.printf("Voltage: %4.3f V\r\n", batteryVoltage);
+
+  if (batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE) {
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    esp_deep_sleep_start();
+    return;
+  }
+
   Serial.begin(115200);
   if (!LittleFS.begin()) {
     Serial.println(F("An Error has occurred while mounting LittleFS"));
@@ -33,6 +75,14 @@ void setup() {
   LittleFS.end();
   Serial.print(F("Setup end: "));
   Serial.println(ESP.getFreeHeap(), DEC);
+
+  batteryVoltage = readBattery();
+  Serial.printf("Voltage: %4.3f V\r\n", batteryVoltage);
+
+  updateDone();
+
+  Serial.println("Going to sleep");
+  sleepDeep();
 }
 
 void printState() {
@@ -341,6 +391,7 @@ void displayForecast() {
   display.setRotation(0);
   display.setPartialWindow(x, y, w, h);
   display.firstPage();
+
   do
   {
     display.fillScreen(GxEPD_WHITE);
@@ -403,6 +454,34 @@ void displayLastUpdate() {
   
 }
 
+void displayBattery(){
+  const uint16_t x = 560;
+  const uint16_t y = 450;
+  const uint16_t w = 88;
+  const uint16_t h = 30;
+
+  int16_t tbx, tby; uint16_t tbw, tbh;
+
+  char voltage[6] = "";
+  snprintf(voltage, 6, "%2.1f V", batteryVoltage);
+
+  display.setRotation(0);
+  display.setPartialWindow(x, y, w, h);
+  display.firstPage();
+
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeMonoBold12pt7b);
+    display.getTextBounds(voltage, 0, 0, &tbx, &tby, &tbw, &tbh);
+    display.setCursor(x, y+tbh);
+    display.print(voltage);
+  }
+  while (display.nextPage());
+  delay(1000);
+}
+
 void refreshDisplay(byte refresh) {
   if (refresh <= 0) {
     return;
@@ -419,6 +498,7 @@ void refreshDisplay(byte refresh) {
   displayForecast();
   displayNextBus();
   displayLastUpdate();
+  displayBattery();
   display.hibernate();
 }
 
@@ -778,6 +858,36 @@ void drawBitmapFromSpiffs(const char *filename, int16_t x, int16_t y, bool with_
   {
     Serial.println(F("bitmap format not handled."));
   }
+}
+
+float readBattery() {
+  uint32_t value = 0;
+  int rounds = 11;
+  esp_adc_cal_characteristics_t adc_chars;
+
+  //battery voltage divided by 2 can be measured at GPIO34, which equals ADC1_CHANNEL6
+  adc1_config_width(ADC_WIDTH_BIT_12);
+  adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);
+  switch(esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars)) {
+    case ESP_ADC_CAL_VAL_EFUSE_TP:
+      Serial.println("Characterized using Two Point Value");
+      break;
+    case ESP_ADC_CAL_VAL_EFUSE_VREF:
+      Serial.printf("Characterized using eFuse Vref (%d mV)\r\n", adc_chars.vref);
+      break;
+    default:
+      Serial.printf("Characterized using Default Vref (%d mV)\r\n", 1100);
+  }
+
+  //to avoid noise, sample the pin several times and average the result
+  for(int i=1; i<=rounds; i++) {
+    value += adc1_get_raw(ADC1_CHANNEL_6);
+  }
+  value /= (uint32_t)rounds;
+
+  //due to the voltage divider (1M+1M) values must be multiplied by 2
+  //and convert mV to V
+  return esp_adc_cal_raw_to_voltage(value, &adc_chars)*2.0/1000.0;
 }
 
 void loop() {

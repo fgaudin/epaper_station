@@ -16,8 +16,13 @@
 #include <Fonts/FreeMonoBold24pt7b.h>
 #include "fonts/FreeMonoBold48pt7b.h"
 #include "fonts/FreeMonoBold64pt7b.h"
+#include "esp_adc_cal.h"
 
 #include <FS.h>
+
+#define LOW_BATTERY_VOLTAGE 3.20
+#define VERY_LOW_BATTERY_VOLTAGE 3.10
+#define CRITICALLY_LOW_BATTERY_VOLTAGE 3.00
 
 typedef struct {
   char ssid[32];
@@ -47,7 +52,7 @@ struct State {
   forecastDay forecast[3];
 };
 
-typedef GxEPD2_3C < GxEPD2_583c_Z83, GxEPD2_583c_Z83::HEIGHT/2> Display;
+typedef GxEPD2_3C < GxEPD2_583c_Z83, GxEPD2_583c_Z83::HEIGHT/4> Display;  // 648 x 480
 
 void drawBitmapFromSpiffs(const char *filename, int16_t x, int16_t y, bool with_color = true);
 void refreshData(byte refresh);
@@ -59,3 +64,4 @@ void disconnectWifi();
 void setClock();
 void refreshWeather(Settings *settings, WiFiClientSecure *client);
 void refreshForecast(Settings *settings, WiFiClientSecure *client);
+float readBattery();
