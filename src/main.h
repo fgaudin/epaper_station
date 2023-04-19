@@ -55,9 +55,9 @@ struct State {
 typedef GxEPD2_3C < GxEPD2_583c_Z83, GxEPD2_583c_Z83::HEIGHT/4> Display;  // 648 x 480
 
 void drawBitmapFromSpiffs(const char *filename, int16_t x, int16_t y, bool with_color = true);
-void refreshData(byte refresh);
+void refreshData();
 void printState();
-void refreshDisplay(byte refresh);
+void refreshDisplay();
 void loadSettings(Settings* settings);
 void connectToWifi(Settings *settings);
 void disconnectWifi();

@@ -22,6 +22,9 @@ int ledPin = D9;
 
 float batteryVoltage;
 
+RTC_DATA_ATTR unsigned long lastUpdate = 0;
+int dayChangedCache = -1;
+
 void updateInProgress() {
   digitalWrite(ledPin, HIGH);
 }
@@ -61,16 +64,15 @@ void setup() {
     return;
   }
 
-  byte refresh = B011;  // bus|forecast|weather
   Serial.println("");
   Serial.print(F("Setup start: "));
-  refreshData(refresh);
+  refreshData();
   printState();
 
   delay(1000);
   Serial.println(F("memory before display: "));
   Serial.println(ESP.getFreeHeap(), DEC);
-  refreshDisplay(refresh);
+  refreshDisplay();
 
   LittleFS.end();
   Serial.print(F("Setup end: "));
@@ -141,11 +143,25 @@ void toMonthStr(char * dest, int monthIdx /* 1-indexed */) {
   strcpy(dest, months[monthIdx-1]);
 }
 
-void refreshData(byte refresh) {
-  if (refresh <= 0) {
-    return;
+bool dayChanged() {
+  if (dayChangedCache == -1) {
+    unsigned long now_t = state.dt + state.offset;
+    if (lastUpdate == 0
+      || day(now_t) != day(lastUpdate)
+      || month(now_t) != month(lastUpdate)
+      || year(now_t) != year(lastUpdate)) {
+        Serial.println("day changed");
+      dayChangedCache = 1;
+    } else {
+      Serial.println("day didn't change");
+      dayChangedCache = 0;
+    }
+    lastUpdate = now_t;
   }
+  return bool(dayChangedCache);
+}
 
+void refreshData() {
   Settings settings;
   loadSettings(&settings);
 
@@ -155,9 +171,9 @@ void refreshData(byte refresh) {
   WiFiClientSecure *client = new WiFiClientSecure();
   client->setCACertBundle(rootca_crt_bundle_start);
 
-  if (refresh & 1) refreshWeather(&settings, client);
+  refreshWeather(&settings, client);
   Serial.println(ESP.getFreeHeap(), DEC);
-  if (refresh >> 1 & 1) refreshForecast(&settings, client);
+  refreshForecast(&settings, client);
 
   delete client;
   client = NULL;
@@ -482,18 +498,16 @@ void displayBattery(){
   delay(1000);
 }
 
-void refreshDisplay(byte refresh) {
-  if (refresh <= 0) {
-    return;
-  }
-
+void refreshDisplay() {
   Serial.println("Create display");
   delay(500);
   Serial.println("Init display");
   display.init(115200, true, 2, false);
-  clearDisplay();
-  displaySunset();
-  displayDate();
+  if (dayChanged()) {
+    clearDisplay();
+    displaySunset();
+    displayDate();
+  }
   displayWeather();
   displayForecast();
   displayNextBus();
@@ -539,19 +553,13 @@ void loadSettings(Settings* settings) {
 }
 
 void setClock() {
-  configTime(3 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  configTime(-8 * 3600, 3600, "pool.ntp.org", "time.nist.gov");
   Serial.print(F("Waiting for NTP time sync: "));
-  time_t now = time(nullptr);
-  while (now < 8 * 3600 * 2) {
-    delay(500);
-    Serial.print(F("."));
-    now = time(nullptr);
-  }
-  Serial.println(F(""));
   struct tm timeinfo;
-  gmtime_r(&now, &timeinfo);
-  Serial.print(F("Current time: "));
-  Serial.print(asctime(&timeinfo));
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void connectToWifi(Settings *settings) {
