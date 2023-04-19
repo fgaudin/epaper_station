@@ -69,7 +69,7 @@ void setup() {
   refreshData();
   printState();
 
-  delay(1000);
+  delay(100);
   Serial.println(F("memory before display: "));
   Serial.println(ESP.getFreeHeap(), DEC);
   refreshDisplay();
@@ -251,7 +251,7 @@ void displayDate() {
     display.print(dayStr);
   }
   while (display.nextPage());
-  delay(1000);
+  delay(100);
 }
 
 void displayWeather()
@@ -337,7 +337,7 @@ void displayWeather()
     display.print("o");
   }
   while (display.nextPage());
-  delay(1000);
+  delay(100);
 }
 
 void displaySunset() {
@@ -386,7 +386,7 @@ void displaySunset() {
     display.print(state.todaySunset);
   }
   while (display.nextPage());
-  delay(1000);
+  delay(100);
 }
 
 void displayForecast() {
@@ -395,7 +395,7 @@ void displayForecast() {
   uint16_t x = initial_x;
   uint16_t y = initial_y;
   const uint16_t w = 648 - x - 1;
-  const uint16_t h = 640;
+  const uint16_t h = 430;
 
   int16_t tbx, tby; uint16_t tbw, tbh;
 
@@ -459,7 +459,7 @@ void displayForecast() {
     }
   }
   while (display.nextPage());
-  delay(1000);
+  delay(100);
 }
 
 void displayNextBus() {
@@ -467,7 +467,36 @@ void displayNextBus() {
 }
 
 void displayLastUpdate() {
-  
+  const uint16_t x = 460;
+  const uint16_t y = 450;
+  const uint16_t w = 100;
+  const uint16_t h = 30;
+
+  int16_t tbx, tby; uint16_t tbw, tbh;
+
+  char lastUpdateStr[6];
+  time_t now;
+  time(&now);
+  Serial.print("last update: ");
+  Serial.println(now);
+  now += state.offset;
+  snprintf(lastUpdateStr, 6, "%02d:%02d", hour(now), minute(now));
+
+  display.setRotation(0);
+  display.setPartialWindow(x, y, w, h);
+  display.firstPage();
+
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeMonoBold12pt7b);
+    display.getTextBounds(lastUpdateStr, 0, 0, &tbx, &tby, &tbw, &tbh);
+    display.setCursor(x, y+tbh);
+    display.print(lastUpdateStr);
+  }
+  while (display.nextPage());
+  delay(100);
 }
 
 void displayBattery(){
@@ -495,12 +524,10 @@ void displayBattery(){
     display.print(voltage);
   }
   while (display.nextPage());
-  delay(1000);
+  delay(100);
 }
 
 void refreshDisplay() {
-  Serial.println("Create display");
-  delay(500);
   Serial.println("Init display");
   display.init(115200, true, 2, false);
   if (dayChanged()) {
@@ -553,7 +580,7 @@ void loadSettings(Settings* settings) {
 }
 
 void setClock() {
-  configTime(-8 * 3600, 3600, "pool.ntp.org", "time.nist.gov");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   Serial.print(F("Waiting for NTP time sync: "));
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -567,7 +594,7 @@ void connectToWifi(Settings *settings) {
   WiFi.begin(settings->ssid, settings->password);
 
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    delay(200);
     Serial.print(F("."));
   }
 }
